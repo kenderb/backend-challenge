@@ -5,13 +5,14 @@ require "rails_helper"
 RSpec.describe Customer, type: :model do
   describe "defaults" do
     it "defaults orders_count to 0" do
-      customer = Customer.new(name: "Jane", address: "123 St")
+      customer = described_class.new(name: "Jane", address: "123 St")
       expect(customer.orders_count).to eq(0)
     end
   end
 
   describe "validations" do
     subject { build(:customer) }
+
     it { is_expected.to be_valid }
 
     it { is_expected.to validate_presence_of(:name) }

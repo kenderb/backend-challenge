@@ -52,6 +52,9 @@ services:
     build:
       context: ./order_service
       dockerfile: Dockerfile
+      args:
+        # Include development/test gems so we can run rspec, rubocop, etc. in the container
+        BUNDLE_WITHOUT_EXTRA: ""
     volumes:
       - ./order_service:/rails
     command: >

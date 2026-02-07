@@ -1,5 +1,8 @@
+# frozen_string_literal: true
+
 # This file should ensure the existence of records required to run the application in every environment (production,
-# development, test). The data can then be loaded with the bin/rails db:seed command (or created alongside the database with db:setup).
+# development, test). The data can then be loaded with the bin/rails db:seed command (or created alongside the
+# database with db:setup).
 # Idempotent: safe to run multiple times.
 
 CUSTOMERS = [
@@ -15,7 +18,7 @@ CUSTOMERS = [
   { name: "Jack Anderson", address: "1000 Willow Way, Southport" }
 ].freeze
 
-if Customer.count.zero?
+if Customer.none?
   CUSTOMERS.each do |attrs|
     Customer.create!(attrs.merge(orders_count: 0))
   end

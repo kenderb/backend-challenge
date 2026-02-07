@@ -1,0 +1,60 @@
+# RuboCop configuration for Order Service
+# https://docs.rubocop.org/rubocop/configuration
+
+plugins:
+  - rubocop-rails
+  - rubocop-rspec
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.1
+  Exclude:
+    - "bin/**"
+    - "db/schema.rb"
+    - "db/migrate/**"
+    - "node_modules/**"
+    - "vendor/**"
+    - "tmp/**"
+    - "storage/**"
+    - "config.ru"
+
+# Style
+Style/Documentation:
+  Enabled: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: true
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Layout/LineLength:
+  Max: 120
+  Exclude:
+    - "spec/**/*"
+
+# Rails
+Rails:
+  Enabled: true
+
+Rails/ApplicationRecord:
+  Enabled: true
+
+Rails/Output:
+  Exclude:
+    - "db/seeds.rb"
+
+# RSpec
+RSpec/ExampleLength:
+  Max: 15
+
+RSpec/MultipleExpectations:
+  Max: 5
+
+RSpec/NestedGroups:
+  Max: 5
+
+RSpec/DescribeClass:
+  Exclude:
+    - "spec/routing/**/*"
+    - "spec/requests/**/*"
