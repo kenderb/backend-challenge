@@ -1,0 +1,141 @@
+services:
+  order_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: order_service
+      POSTGRES_PASSWORD: order_service
+      POSTGRES_DB: order_service_development
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    networks:
+      - be_test_net
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  customer_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: customer_service
+      POSTGRES_PASSWORD: customer_service
+      POSTGRES_DB: customer_service_development
+    volumes:
+      - customer_db_data:/var/lib/postgresql/data
+    networks:
+      - be_test_net
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U customer_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - be_test_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order_service:
+    build:
+      context: ./order_service
+      dockerfile: Dockerfile
+    command: >
+      bash -c "
+      echo 'Waiting for order_db...' &&
+      until pg_isready -h order_db -U order_service -q; do sleep 2; done &&
+      echo 'Waiting for RabbitMQ...' &&
+      until curl -sf http://rabbitmq:15672/ > /dev/null; do sleep 2; done &&
+      echo 'DB and RabbitMQ ready.' &&
+      rm -f tmp/pids/server.pid &&
+      bundle exec rails db:prepare &&
+      bundle exec rails server -b 0.0.0.0 -p 3000
+      "
+    ports:
+      - "3001:3000"
+    environment:
+      RAILS_ENV: development
+      POSTGRES_HOST: order_db
+      POSTGRES_USER: order_service
+      POSTGRES_PASSWORD: order_service
+      POSTGRES_DB: order_service_development
+      CUSTOMER_SERVICE_URL: http://customer_service:3000
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    depends_on:
+      order_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - be_test_net
+
+  customer_service:
+    build:
+      context: ./customer_service
+      dockerfile: Dockerfile
+    command: >
+      bash -c "
+      echo 'Waiting for customer_db...' &&
+      until pg_isready -h customer_db -U customer_service -q; do sleep 2; done &&
+      echo 'Waiting for RabbitMQ...' &&
+      until curl -sf http://rabbitmq:15672/ > /dev/null; do sleep 2; done &&
+      echo 'DB and RabbitMQ ready.' &&
+      rm -f tmp/pids/server.pid &&
+      bundle exec rails db:prepare &&
+      bundle exec rails db:seed &&
+      bundle exec rails server -b 0.0.0.0 -p 3000
+      "
+    ports:
+      - "3002:3000"
+    environment:
+      RAILS_ENV: development
+      POSTGRES_HOST: customer_db
+      POSTGRES_USER: customer_service
+      POSTGRES_PASSWORD: customer_service
+      POSTGRES_DB: customer_service_development
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    depends_on:
+      customer_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - be_test_net
+
+networks:
+  be_test_net:
+    driver: bridge
+
+volumes:
+  order_db_data:
+  customer_db_data:
