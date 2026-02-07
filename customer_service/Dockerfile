@@ -7,11 +7,12 @@ FROM registry.docker.com/library/ruby:$RUBY_VERSION-slim as base
 # Rails app lives here
 WORKDIR /rails
 
-# Set production environment
+# Set production environment (BUNDLE_WITHOUT can be overridden to "" to include test/development gems for Docker Compose)
+ARG BUNDLE_WITHOUT_EXTRA=development
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development"
+    BUNDLE_WITHOUT="${BUNDLE_WITHOUT_EXTRA}"
 
 
 # Throw-away build stage to reduce size of final image
@@ -21,7 +22,7 @@ FROM base as build
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git libpq-dev libvips pkg-config
 
-# Install application gems
+# Install application gems (when BUNDLE_WITHOUT_EXTRA is "", development/test gems like rspec are installed)
 COPY Gemfile Gemfile.lock ./
 RUN bundle install && \
     rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
