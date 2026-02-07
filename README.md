@@ -118,21 +118,17 @@ Both apps use **RSpec**. Run specs per service.
 From the project root, run specs inside the app containers:
 
 ```bash
-# Order Service
-docker compose run --rm order_service bundle exec rspec
+# Create test DBs and run migrations (once per service)
+docker compose run --rm -e RAILS_ENV=test order_service bundle exec rails db:create db:migrate
+docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rails db:create db:migrate
 
-# Customer Service
-docker compose run --rm customer_service bundle exec rspec
+# Run specs
+docker compose run --rm -e RAILS_ENV=test order_service bundle exec rspec
+docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec
 ```
 
-For the test DB, the same `POSTGRES_*` env vars are used (pointing to the compose DBs). If the test DBs don’t exist yet, create them first:
+Use **`-e RAILS_ENV=test`** so the test database is used. App code is mounted into the containers, so **code changes are picked up immediately**—no rebuild needed. Only rebuild when you change the **Gemfile** or **Dockerfile**: `docker compose build customer_service`.
 
-```bash
-docker compose run --rm order_service bundle exec rails db:create db:migrate RAILS_ENV=test
-docker compose run --rm customer_service bundle exec rails db:create db:migrate RAILS_ENV=test
-```
-
-Then run the specs as above.
 
 ### Locally (no Docker)
 

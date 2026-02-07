@@ -52,6 +52,8 @@ services:
     build:
       context: ./order_service
       dockerfile: Dockerfile
+    volumes:
+      - ./order_service:/rails
     command: >
       bash -c "
       echo 'Waiting for order_db...' &&
@@ -94,6 +96,11 @@ services:
     build:
       context: ./customer_service
       dockerfile: Dockerfile
+      args:
+        # Include development/test gems so we can run rspec in the container
+        BUNDLE_WITHOUT_EXTRA: ""
+    volumes:
+      - ./customer_service:/rails
     command: >
       bash -c "
       echo 'Waiting for customer_db...' &&
@@ -118,6 +125,8 @@ services:
       RABBITMQ_PORT: "5672"
       RABBITMQ_USER: guest
       RABBITMQ_PASSWORD: guest
+      # API key for X-Internal-Api-Key header (override in .env for production)
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-your-secret-key}
     depends_on:
       customer_db:
         condition: service_healthy
