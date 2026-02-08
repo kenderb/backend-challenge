@@ -10,6 +10,7 @@ Things you may want to cover:
 * System dependencies
 
 * Configuration
+  * Set the customer service internal API key via `bin/rails credentials:edit` (e.g. `internal_api_key: <secret>`), or use `ENV["INTERNAL_API_KEY"]` in non-production.
 
 * Database creation
 

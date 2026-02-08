@@ -122,12 +122,17 @@ From the project root, run specs inside the app containers:
 docker compose run --rm -e RAILS_ENV=test order_service bundle exec rails db:create db:migrate
 docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rails db:create db:migrate
 
-# Run specs
+# Run specs (always use -e RAILS_ENV=test)
 docker compose run --rm -e RAILS_ENV=test order_service bundle exec rspec
 docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec
 ```
 
-Use **`-e RAILS_ENV=test`** so the test database is used. App code is mounted into the containers, so **code changes are picked up immediately**—no rebuild needed. Only rebuild when you change the **Gemfile** or **Dockerfile**: `docker compose build customer_service`.
+**Important:** You **must** pass **`-e RAILS_ENV=test`** when running rspec in Docker. Without it, the container uses `RAILS_ENV=development` (the Compose default), so the test environment is never loaded and specs can fail (e.g. request specs returning 403 due to host authorization). Always use:
+
+- **Correct:** `docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec`
+- **Wrong:** `docker compose run --rm customer_service bundle exec rspec` (omits test env)
+
+Using `-e RAILS_ENV=test` also ensures the test database is used. App code is mounted into the containers, so **code changes are picked up immediately**—no rebuild needed. Only rebuild when you change the **Gemfile** or **Dockerfile**: `docker compose build customer_service`.
 
 
 ### Locally (no Docker)
@@ -161,5 +166,5 @@ bundle exec rspec path/to/spec_file.rb   # single file
 ## Summary
 
 - **Run app:** `docker compose up --build -d` from `backend-challenge`.
-- **Run Order Service specs:** `docker compose run --rm order_service bundle exec rspec` or from `order_service/`: `bundle exec rspec`.
-- **Run Customer Service specs:** `docker compose run --rm customer_service bundle exec rspec` or from `customer_service/`: `bundle exec rspec`.
+- **Run Order Service specs:** `docker compose run --rm -e RAILS_ENV=test order_service bundle exec rspec` or from `order_service/`: `RAILS_ENV=test bundle exec rspec`.
+- **Run Customer Service specs:** `docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec` or from `customer_service/`: `RAILS_ENV=test bundle exec rspec`.

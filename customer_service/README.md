@@ -49,9 +49,19 @@ Without the header (or with a wrong key), the endpoint returns **401 Unauthorize
 
 ## Running the test suite
 
+**From this directory (local):**
+
 ```bash
 bundle exec rspec
 ```
+
+**From the project root via Docker:** you must set the test environment or specs will run under development and can fail (e.g. 403 in request specs):
+
+```bash
+docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec
+```
+
+Do **not** run `docker compose run --rm customer_service bundle exec rspec` without `-e RAILS_ENV=test`.
 
 Tests stub the credential in request specs, so no need to set credentials for the test suite.
 

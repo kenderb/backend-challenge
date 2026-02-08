@@ -4,6 +4,8 @@ require "rails_helper"
 
 RSpec.describe Orders::Create do
   describe ".call" do
+    let(:base_url) { "http://customer-service.test" }
+    let(:api_key) { "test-internal-key" }
     let(:valid_params) do
       {
         customer_id: 1,
@@ -13,22 +15,44 @@ RSpec.describe Orders::Create do
       }
     end
 
+    before do
+      ENV["CUSTOMER_SERVICE_URL"] = base_url
+      ENV["INTERNAL_API_KEY"] = api_key
+
+      stub_request(:get, "#{base_url}/customers/1")
+        .with(headers: { "X-Internal-Api-Key" => api_key })
+        .to_return(
+          status: 200,
+          body: { name: "Jane", address: "123 Main St", orders_count: 0 }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+    end
+
+    after do
+      ENV.delete("CUSTOMER_SERVICE_URL")
+      ENV.delete("INTERNAL_API_KEY")
+    end
+
     context "with valid params" do
       it "creates an order successfully" do
         expect do
-          described_class.call(valid_params)
+          result = described_class.call(valid_params)
+          expect(result.success?).to be true
+          expect(result.value).to be_persisted
         end.to change(Order, :count).by(1)
       end
 
       it "returns a persisted Order" do
-        order = described_class.call(valid_params)
+        result = described_class.call(valid_params)
 
-        expect(order).to be_a(Order)
-        expect(order).to be_persisted
+        expect(result.success?).to be true
+        expect(result.value).to be_a(Order)
+        expect(result.value).to be_persisted
       end
 
       it "returns the order with the given attributes and pending status" do
-        order = described_class.call(valid_params)
+        result = described_class.call(valid_params)
+        order = result.value
 
         expect(order.customer_id).to eq(valid_params[:customer_id])
         expect(order.product_name).to eq(valid_params[:product_name])
@@ -48,19 +72,71 @@ RSpec.describe Orders::Create do
       end
     end
 
+    context "when customer is not found" do
+      it "returns a structured failure and does not create an order" do
+        stub_request(:get, "#{base_url}/customers/999")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 404)
+
+        initial_count = Order.count
+        result = described_class.call(valid_params.merge(customer_id: 999))
+
+        expect(result.failure?).to be true
+        expect(result.error_code).to eq(:customer_not_found)
+        expect(result.message).to eq("Customer not found")
+        expect(Order.count).to eq(initial_count)
+      end
+    end
+
+    context "when customer service returns 401 (unauthorized)" do
+      it "returns a structured failure with :unauthorized and does not create an order" do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 401)
+
+        initial_count = Order.count
+        result = described_class.call(valid_params)
+
+        expect(result.failure?).to be true
+        expect(result.error_code).to eq(:unauthorized)
+        expect(result.message).to eq("Unauthorized")
+        expect(Order.count).to eq(initial_count)
+      end
+    end
+
+    context "when customer service is unavailable" do
+      it "returns a structured failure and does not create an order" do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 503)
+
+        initial_count = Order.count
+        result = described_class.call(valid_params)
+
+        expect(result.failure?).to be true
+        expect(result.error_code).to eq(:service_unavailable)
+        expect(result.message).to be_present
+        expect(Order.count).to eq(initial_count)
+      end
+    end
+
     context "with idempotency key" do
       let(:idempotency_key) { "idem-#{SecureRandom.uuid}" }
 
       it "creates an order on first request and stores the key" do
-        order = described_class.call(valid_params, idempotency_key: idempotency_key)
+        result = described_class.call(valid_params, idempotency_key: idempotency_key)
+        order = result.value
 
+        expect(result.success?).to be true
         expect(order).to be_persisted
         expect(IdempotencyKey.find_by(key: idempotency_key).order_id).to eq(order.id)
       end
 
       it "returns the existing order on duplicate key and does not increment count" do
-        order_first = described_class.call(valid_params, idempotency_key: idempotency_key)
-        order_second = described_class.call(valid_params, idempotency_key: idempotency_key)
+        result_first = described_class.call(valid_params, idempotency_key: idempotency_key)
+        result_second = described_class.call(valid_params, idempotency_key: idempotency_key)
+        order_first = result_first.value
+        order_second = result_second.value
 
         expect(order_second.id).to eq(order_first.id)
         expect(order_second).to eq(order_first)
