@@ -1,0 +1,8 @@
+# Monorepo root: applies to all services
+# https://git-scm.com/docs/gitattributes
+
+# Generated / vendored (language stats, diffs)
+**/db/schema.rb linguist-generated
+**/vendor/* linguist-vendored
+**/config/credentials/*.yml.enc diff=rails_credentials
+**/config/credentials.yml.enc diff=rails_credentials
