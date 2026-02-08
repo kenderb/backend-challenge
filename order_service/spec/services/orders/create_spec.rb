@@ -4,6 +4,8 @@ require "rails_helper"
 
 RSpec.describe Orders::Create do
   describe ".call" do
+    let(:base_url) { "http://customer-service.test" }
+    let(:api_key) { "test-internal-key" }
     let(:valid_params) do
       {
         customer_id: 1,
@@ -11,6 +13,24 @@ RSpec.describe Orders::Create do
         quantity: 2,
         price: 19.99
       }
+    end
+
+    before do
+      ENV["CUSTOMER_SERVICE_URL"] = base_url
+      ENV["INTERNAL_API_KEY"] = api_key
+
+      stub_request(:get, "#{base_url}/customers/1")
+        .with(headers: { "X-Internal-Api-Key" => api_key })
+        .to_return(
+          status: 200,
+          body: { name: "Jane", address: "123 Main St", orders_count: 0 }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+    end
+
+    after do
+      ENV.delete("CUSTOMER_SERVICE_URL")
+      ENV.delete("INTERNAL_API_KEY")
     end
 
     context "with valid params" do
@@ -45,6 +65,34 @@ RSpec.describe Orders::Create do
         expect do
           described_class.call(invalid_params)
         end.to raise_error(ActiveRecord::RecordInvalid)
+      end
+    end
+
+    context "when customer is not found" do
+      it "raises Errors::CustomerNotFound and does not create an order" do
+        stub_request(:get, "#{base_url}/customers/999")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 404)
+
+        initial_count = Order.count
+        expect do
+          described_class.call(valid_params.merge(customer_id: 999))
+        end.to raise_error(Errors::CustomerNotFound)
+        expect(Order.count).to eq(initial_count)
+      end
+    end
+
+    context "when customer service is unavailable" do
+      it "raises Errors::ServiceUnavailable and does not create an order" do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 503)
+
+        initial_count = Order.count
+        expect do
+          described_class.call(valid_params)
+        end.to raise_error(Errors::ServiceUnavailable)
+        expect(Order.count).to eq(initial_count)
       end
     end
 

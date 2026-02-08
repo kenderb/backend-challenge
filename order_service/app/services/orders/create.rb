@@ -7,25 +7,32 @@ module Orders
     # @param event_publisher [Object, nil] optional callable to emit events (e.g. RabbitMQ) after success
     # @return [Order] the created or existing order
     # @raise [ActiveRecord::RecordInvalid] when params are invalid
-    def self.call(params, idempotency_key: nil, event_publisher: nil)
-      new(params: params, idempotency_key: idempotency_key, event_publisher: event_publisher).call
+    def self.call(params, idempotency_key: nil, event_publisher: nil, customer_client: nil)
+      new(
+        params: params,
+        idempotency_key: idempotency_key,
+        event_publisher: event_publisher,
+        customer_client: customer_client
+      ).call
     end
 
-    def initialize(params:, idempotency_key: nil, event_publisher: nil)
+    def initialize(params:, idempotency_key: nil, event_publisher: nil, customer_client: nil)
       @params = params.to_h.with_indifferent_access
       @idempotency_key = idempotency_key.presence
       @event_publisher = event_publisher
+      @customer_client = customer_client || ExternalApis::CustomerClient.new
     end
 
     def call
       return existing_order if idempotency_key && existing_order
 
+      validate_customer!
       create_order
     end
 
     private
 
-    attr_reader :params, :idempotency_key, :event_publisher
+    attr_reader :params, :idempotency_key, :event_publisher, :customer_client
 
     def existing_order
       @existing_order ||= IdempotencyKey.find_by(key: idempotency_key)&.order
@@ -60,6 +67,12 @@ module Orders
       return unless event_publisher.respond_to?(:call)
 
       event_publisher.call(:order_created, order)
+    end
+
+    def validate_customer!
+      return if params[:customer_id].blank?
+
+      customer_client.fetch_customer(params[:customer_id])
     end
   end
 end

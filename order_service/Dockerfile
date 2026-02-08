@@ -48,9 +48,10 @@ RUN apt-get update -qq && \
 COPY --from=build /usr/local/bundle /usr/local/bundle
 COPY --from=build /rails /rails
 
-# Run and own only the runtime files as a non-root user for security
+# Run and own only the runtime files as a non-root user for security.
+# Own the bundle dir so `bundle install` can write to cache when run in the container (e.g. after Gemfile change).
 RUN useradd rails --create-home --shell /bin/bash && \
-    chown -R rails:rails db log storage tmp
+    chown -R rails:rails /usr/local/bundle db log storage tmp
 USER rails:rails
 
 # Entrypoint prepares the database.

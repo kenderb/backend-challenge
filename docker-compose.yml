@@ -77,6 +77,8 @@ services:
       POSTGRES_PASSWORD: order_service
       POSTGRES_DB: order_service_development
       CUSTOMER_SERVICE_URL: http://customer_service:3000
+      # API key for X-Internal-Api-Key header (override in .env for production)
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-your-secret-key}
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: "5672"
       RABBITMQ_USER: guest
