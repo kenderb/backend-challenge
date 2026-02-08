@@ -12,4 +12,11 @@ module Errors
       super
     end
   end
+
+  # Raised when customer_service is down, 5xx, or timeout (for clearer domain semantics).
+  class CustomerServiceUnavailable < ServiceUnavailable
+    def initialize(message = "Customer service unavailable")
+      super
+    end
+  end
 end

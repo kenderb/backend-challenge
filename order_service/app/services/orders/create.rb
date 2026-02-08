@@ -2,11 +2,24 @@
 
 module Orders
   class Create
+    # Structured result: success with order, or failure with error_code and message.
+    Success = Struct.new(:value, keyword_init: true) do
+      def success? = true
+      def failure? = false
+      def error_code = nil
+      def message = nil
+    end
+    Failure = Struct.new(:error_code, :message, keyword_init: true) do
+      def success? = false
+      def failure? = true
+      def value = nil
+    end
+
     # @param params [Hash] order attributes (customer_id, product_name, quantity, price, etc.)
     # @param idempotency_key [String, nil] optional key to prevent duplicate orders on retries
     # @param event_publisher [Object, nil] optional callable to emit events (e.g. RabbitMQ) after success
-    # @return [Order] the created or existing order
-    # @raise [ActiveRecord::RecordInvalid] when params are invalid
+    # @return [Success, Failure] Success(order) or Failure(:customer_not_found | :service_unavailable, message)
+    # @raise [ActiveRecord::RecordInvalid] when params are invalid (e.g. missing required fields)
     def self.call(params, idempotency_key: nil, event_publisher: nil, customer_client: nil)
       new(
         params: params,
@@ -24,10 +37,14 @@ module Orders
     end
 
     def call
-      return existing_order if idempotency_key && existing_order
+      return Success.new(value: existing_order) if idempotency_key && existing_order
 
       validate_customer!
-      create_order
+      Success.new(value: create_order)
+    rescue Errors::CustomerNotFound => e
+      Failure.new(error_code: :customer_not_found, message: e.message)
+    rescue Errors::CustomerServiceUnavailable, Errors::ServiceUnavailable => e
+      Failure.new(error_code: :service_unavailable, message: e.message)
     end
 
     private

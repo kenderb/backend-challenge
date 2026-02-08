@@ -32,6 +32,22 @@ RSpec.describe ExternalApis::CustomerClient do
         expect(result.orders_count).to eq(0)
       end
 
+      it "data integrity: correctly parses customer_name, address, and orders_count from JSON" do
+        stub_request(:get, "#{base_url}/customers/42")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(
+            status: 200,
+            body: { name: "Alice Doe", address: "456 Oak Ave", orders_count: 7 }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+
+        result = client.fetch_customer(42)
+
+        expect(result.customer_name).to eq("Alice Doe")
+        expect(result.address).to eq("456 Oak Ave")
+        expect(result.orders_count).to eq(7)
+      end
+
       it "does not return raw HTTP response" do
         result = client.fetch_customer(1)
 
@@ -61,24 +77,41 @@ RSpec.describe ExternalApis::CustomerClient do
           .to_return(status: 500, body: "Internal Server Error")
       end
 
-      it "raises Errors::ServiceUnavailable and does not return raw HTTP" do
-        expect { client.fetch_customer(1) }.to raise_error do |error|
-          expect(error.class.name).to eq("Errors::ServiceUnavailable")
-        end
+      it "raises Errors::CustomerServiceUnavailable and does not return raw HTTP" do
+        expect { client.fetch_customer(1) }.to raise_error(Errors::CustomerServiceUnavailable)
       end
     end
 
-    context "when the request times out (resilience path)" do
+    context "when the service is slow (request times out)" do
       before do
         stub_request(:get, "#{base_url}/customers/1")
           .with(headers: { "X-Internal-Api-Key" => api_key })
           .to_timeout
       end
 
-      it "raises Errors::ServiceUnavailable" do
-        expect { client.fetch_customer(1) }.to raise_error do |error|
-          expect(error.class.name).to eq("Errors::ServiceUnavailable")
+      it "handles latency gracefully and raises CustomerServiceUnavailable after retries" do
+        expect { client.fetch_customer(1) }.to raise_error(Errors::CustomerServiceUnavailable)
+      end
+    end
+
+    context "when the service is down (circuit breaker opens after multiple 500s)" do
+      before do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 500, body: "Error")
+      end
+
+      it "triggers the circuit breaker and then fails fast without hitting the network" do
+        # Trip the circuit (threshold 3)
+        3.times do
+          client.fetch_customer(1)
+        rescue Errors::CustomerServiceUnavailable
+          # expected
         end
+
+        # Fourth call: circuit open, should raise without making a new request
+        expect { client.fetch_customer(1) }.to raise_error(Errors::CustomerServiceUnavailable)
+        expect(WebMock).to have_requested(:get, "#{base_url}/customers/1").times(3)
       end
     end
 
@@ -106,9 +139,7 @@ RSpec.describe ExternalApis::CustomerClient do
           .to_return(status: 401)
 
         client_wrong_key = described_class.new(base_url: base_url, api_key: "wrong-key")
-        expect { client_wrong_key.fetch_customer(1) }.to raise_error do |error|
-          expect(error.class.name).to eq("Errors::ServiceUnavailable")
-        end
+        expect { client_wrong_key.fetch_customer(1) }.to raise_error(Errors::CustomerServiceUnavailable)
       end
     end
   end
