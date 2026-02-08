@@ -24,6 +24,7 @@ RUN apt-get update -qq && \
 
 # Install application gems (when BUNDLE_WITHOUT_EXTRA is "", development/test gems like rspec, rubocop are installed)
 COPY Gemfile Gemfile.lock ./
+ENV BUNDLE_WITHOUT=
 RUN bundle install && \
     rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
     bundle exec bootsnap precompile --gemfile
