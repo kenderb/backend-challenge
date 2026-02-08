@@ -1,0 +1,79 @@
+# Monorepo root: applies to all services (order_service, customer_service, etc.)
+# https://help.github.com/articles/ignoring-files
+
+# Bundler
+**/.bundle
+**/vendor/bundle
+
+# Environment files (except templates)
+**/.env
+**/.env*
+!**/.env*.erb
+
+# Logs and temp
+**/log/*
+**/tmp/*
+!**/log/.keep
+!**/tmp/.keep
+**/tmp/pids/*
+!**/tmp/pids/
+!**/tmp/pids/.keep
+
+# Storage (uploads, SQLite in dev)
+**/storage/*
+!**/storage/.keep
+**/tmp/storage/*
+!**/tmp/storage/
+!**/tmp/storage/.keep
+**/public/system
+**/public/uploads
+
+# Rails credentials and secrets
+**/config/master.key
+**/config/initializers/secret_token.rb
+
+# Database (SQLite when used)
+**/db/*.sqlite3
+**/db/*.sqlite3-journal
+**/db/*.sqlite3-[0-9]*
+
+# Test / spec artifacts
+**/coverage/
+**/spec/tmp
+capybara-*.html
+pickle-email-*.html
+*.rbc
+*.orig
+rerun.txt
+
+# Debug / REPL
+**/.byebug_history
+
+# RVM
+**/.rvmrc
+
+# Node / frontend (if added later)
+**/node_modules/
+**/public/packs
+**/public/packs-test
+**/public/assets
+**/yarn-error.log
+yarn-debug.log*
+.yarn-integrity
+
+# Bower (if ever used)
+**/vendor/assets/bower_components
+*.bowerrc
+bower.json
+
+# Pow
+**/.powenv
+
+# IDE / editor (optional; uncomment if you don't commit these)
+# **/.idea/
+# **/.vscode/
+# *.swp
+# *.swo
+
+# OS
+.DS_Store
