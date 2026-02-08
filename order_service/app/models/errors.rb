@@ -19,4 +19,11 @@ module Errors
       super
     end
   end
+
+  # Raised when customer_service returns 401 (invalid or missing API key).
+  class UnauthorizedError < StandardError
+    def initialize(message = "Unauthorized")
+      super
+    end
+  end
 end

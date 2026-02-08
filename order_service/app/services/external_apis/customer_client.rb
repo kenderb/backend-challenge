@@ -21,6 +21,7 @@ module ExternalApis
     # @param customer_id [Integer, String]
     # @return [CustomerMetadata] on success
     # @raise [Errors::CustomerNotFound] when customer does not exist (404)
+    # @raise [Errors::UnauthorizedError] when API key is invalid (401)
     # @raise [Errors::CustomerServiceUnavailable] on 5xx, connection, timeout, or circuit open
     def fetch_customer(customer_id)
       customer_service_light.run { perform_fetch(customer_id) }
@@ -39,6 +40,7 @@ module ExternalApis
                                   .with_threshold(3)
                                   .with_error_handler do |error, handle|
                                     raise error if error.is_a?(Errors::CustomerNotFound)
+                                    raise error if error.is_a?(Errors::UnauthorizedError)
 
                                     handle.call(error)
                                   end
@@ -56,6 +58,7 @@ module ExternalApis
     def map_response_to_result(response)
       case response.status
       when 200 then build_customer_metadata(response.body)
+      when 401 then raise Errors::UnauthorizedError
       when 404 then raise Errors::CustomerNotFound
       else raise Errors::CustomerServiceUnavailable
       end
@@ -68,6 +71,8 @@ module ExternalApis
         address: data["address"],
         orders_count: data["orders_count"].to_i
       )
+    rescue JSON::ParserError => e
+      raise Errors::CustomerServiceUnavailable, "Invalid response body: #{e.message}"
     end
 
     def connection
@@ -92,7 +97,8 @@ module ExternalApis
       }
     end
 
-    # Production: prefer credentials. Test/development: ENV then credentials.
+    # Production: prefer credentials (set via bin/rails credentials:edit, e.g. internal_api_key: <secret>).
+    # Test/development: ENV["INTERNAL_API_KEY"] then credentials.
     def resolve_api_key
       if Rails.env.production? && Rails.application.respond_to?(:credentials)
         Rails.application.credentials.internal_api_key

@@ -18,7 +18,8 @@ module Orders
     # @param params [Hash] order attributes (customer_id, product_name, quantity, price, etc.)
     # @param idempotency_key [String, nil] optional key to prevent duplicate orders on retries
     # @param event_publisher [Object, nil] optional callable to emit events (e.g. RabbitMQ) after success
-    # @return [Success, Failure] Success(order) or Failure(:customer_not_found | :service_unavailable, message)
+    # @return [Success, Failure] Success(order) or Failure(:customer_not_found | :unauthorized |
+    #   :service_unavailable, message)
     # @raise [ActiveRecord::RecordInvalid] when params are invalid (e.g. missing required fields)
     def self.call(params, idempotency_key: nil, event_publisher: nil, customer_client: nil)
       new(
@@ -43,6 +44,8 @@ module Orders
       Success.new(value: create_order)
     rescue Errors::CustomerNotFound => e
       Failure.new(error_code: :customer_not_found, message: e.message)
+    rescue Errors::UnauthorizedError => e
+      Failure.new(error_code: :unauthorized, message: e.message)
     rescue Errors::CustomerServiceUnavailable, Errors::ServiceUnavailable => e
       Failure.new(error_code: :service_unavailable, message: e.message)
     end

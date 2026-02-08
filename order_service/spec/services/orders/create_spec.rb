@@ -88,6 +88,22 @@ RSpec.describe Orders::Create do
       end
     end
 
+    context "when customer service returns 401 (unauthorized)" do
+      it "returns a structured failure with :unauthorized and does not create an order" do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 401)
+
+        initial_count = Order.count
+        result = described_class.call(valid_params)
+
+        expect(result.failure?).to be true
+        expect(result.error_code).to eq(:unauthorized)
+        expect(result.message).to eq("Unauthorized")
+        expect(Order.count).to eq(initial_count)
+      end
+    end
+
     context "when customer service is unavailable" do
       it "returns a structured failure and does not create an order" do
         stub_request(:get, "#{base_url}/customers/1")

@@ -82,6 +82,18 @@ RSpec.describe ExternalApis::CustomerClient do
       end
     end
 
+    context "when the customer service returns 503 (down service)" do
+      before do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 503, body: "Service Unavailable")
+      end
+
+      it "raises Errors::CustomerServiceUnavailable" do
+        expect { client.fetch_customer(1) }.to raise_error(Errors::CustomerServiceUnavailable)
+      end
+    end
+
     context "when the service is slow (request times out)" do
       before do
         stub_request(:get, "#{base_url}/customers/1")
@@ -115,6 +127,32 @@ RSpec.describe ExternalApis::CustomerClient do
       end
     end
 
+    context "when the response has invalid contract (malformed or missing fields)" do
+      it "raises CustomerServiceUnavailable when response body is malformed JSON" do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(status: 200, body: "not valid json", headers: { "Content-Type" => "text/plain" })
+
+        expect { client.fetch_customer(1) }.to raise_error(Errors::CustomerServiceUnavailable)
+      end
+
+      it "treats missing orders_count as 0" do
+        stub_request(:get, "#{base_url}/customers/1")
+          .with(headers: { "X-Internal-Api-Key" => api_key })
+          .to_return(
+            status: 200,
+            body: { name: "Jane", address: "123 Main St" }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+
+        result = client.fetch_customer(1)
+
+        expect(result.customer_name).to eq("Jane")
+        expect(result.address).to eq("123 Main St")
+        expect(result.orders_count).to eq(0)
+      end
+    end
+
     context "when verifying X-Internal-Api-Key header" do
       let(:customer_stub) do
         stub_request(:get, "#{base_url}/customers/1")
@@ -139,7 +177,7 @@ RSpec.describe ExternalApis::CustomerClient do
           .to_return(status: 401)
 
         client_wrong_key = described_class.new(base_url: base_url, api_key: "wrong-key")
-        expect { client_wrong_key.fetch_customer(1) }.to raise_error(Errors::CustomerServiceUnavailable)
+        expect { client_wrong_key.fetch_customer(1) }.to raise_error(Errors::UnauthorizedError)
       end
     end
   end
