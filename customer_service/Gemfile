@@ -40,6 +40,9 @@ gem "bootsnap", require: false
 # Faker in default group so db:seed works in Docker (images built without development group)
 gem "faker"
 
+# RabbitMQ client for order.created consumer (resilient, explicit ack/nack)
+gem "bunny"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "database_cleaner-active_record"
