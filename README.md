@@ -163,6 +163,19 @@ bundle exec rspec path/to/spec_file.rb   # single file
 
 ---
 
+## Transactional Outbox (Order Service)
+
+Order creation uses the **Transactional Outbox Pattern**: the `Order` and an `OutboxEvent` are persisted in a **single database transaction**, so no event is lost if RabbitMQ is down at creation time.
+
+- **Persistence:** Events are stored in the `outbox_events` table (PostgreSQL).
+- **Relay:** A Rake-driven polling consumer publishes pending events to RabbitMQ (`exchange: orders.v1`, `routing_key: order.created`) and marks them `processed` only after a successful publish.
+- **Run relay once:** `cd order_service && bundle exec rake outbox:relay_once`
+- **Run relay in a loop (e.g. every 5s):** `bundle exec rake "outbox:relay[5]"`
+
+The **Customer Service** applies `order.created` events **idempotently** via `Orders::ApplyOrderCreated` (using `event_id` and a `processed_order_events` table) so duplicate deliveries do not double-increment `orders_count`.
+
+---
+
 ## Summary
 
 - **Run app:** `docker compose up --build -d` from `backend-challenge`.

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_02_07_100001) do
+ActiveRecord::Schema[7.1].define(version: 2026_02_08_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -34,6 +34,20 @@ ActiveRecord::Schema[7.1].define(version: 2025_02_07_100001) do
     t.index ["customer_id"], name: "index_orders_on_customer_id"
     t.index ["product_name"], name: "index_orders_on_product_name", unique: true
     t.index ["status"], name: "index_orders_on_status"
+  end
+
+  create_table "outbox_events", force: :cascade do |t|
+    t.string "aggregate_type", null: false
+    t.string "aggregate_id", null: false
+    t.string "event_type", null: false
+    t.jsonb "payload", default: {}, null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "processed_at"
+    t.text "error_message"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["status", "created_at"], name: "index_outbox_events_on_status_and_created_at"
+    t.index ["status"], name: "index_outbox_events_on_status"
   end
 
   add_foreign_key "idempotency_keys", "orders"
