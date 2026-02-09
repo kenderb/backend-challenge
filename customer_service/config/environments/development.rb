@@ -69,4 +69,8 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Allow requests from Order Service (Docker network host)
+  config.hosts << "customer_service"
+  config.hosts << "customer_service:3000"
 end

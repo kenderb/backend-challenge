@@ -115,6 +115,40 @@ Before creating an order, Order Service calls Customer Service via **HTTP GET** 
 |--------|--------|-------------|
 | GET | `/customers/:id` | Get customer by id (name, address, orders_count). Requires `X-Internal-Api-Key` when called by Order Service. |
 
+#### Manual testing with curl
+
+**Create order (basic)**
+
+```bash
+curl -s -X POST http://localhost:3001/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customer_id": 1, "product_name": "My Product", "quantity": 2, "price": 19.99}'
+```
+
+**Create order with Idempotency-Key** — same key twice returns the same order (201 on first call, 200 on duplicate):
+
+```bash
+# First request: 201 Created and returns the new order
+curl -s -X POST http://localhost:3001/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: my-unique-key-abc123" \
+  -d '{"customer_id": 2, "product_name": "Idempotent Product", "quantity": 1, "price": 9.99}'
+
+# Second request with same Idempotency-Key: 200 OK and returns the same order (no duplicate created)
+curl -s -X POST http://localhost:3001/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: my-unique-key-abc123" \
+  -d '{"customer_id": 2, "product_name": "Idempotent Product", "quantity": 1, "price": 9.99}'
+```
+
+**Call Customer Service with X-Internal-Api-Key** — the Customer Service requires this header when called (e.g. by Order Service or for testing). Default key in Docker Compose is `your-secret-key`:
+
+```bash
+curl -s -H "X-Internal-Api-Key: your-secret-key" http://localhost:3002/customers/1
+```
+
+Without the header (or with a wrong key) you get `401 Unauthorized`.
+
 **Stop:** `docker compose down`
 
 ### Starting the RabbitMQ consumer (Customer Service)
