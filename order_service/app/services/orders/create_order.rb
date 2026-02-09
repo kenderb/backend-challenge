@@ -5,6 +5,7 @@ module Orders
   # ensuring atomicity between business state and event storage (transactional outbox).
   # Event delivery is performed by Outbox::PublishingWorker; this service does not publish to RabbitMQ.
   class CreateOrder
+    ORDER_AGGREGATE_TYPE = "Order"
     ORDER_CREATED_EVENT_TYPE = "order.created"
 
     def self.call(params, idempotency_key: nil, customer_client: nil)
@@ -71,7 +72,7 @@ module Orders
 
     def outbox_attrs_for_order(order)
       {
-        aggregate_type: "Order",
+        aggregate_type: ORDER_AGGREGATE_TYPE,
         aggregate_id: order.id.to_s,
         event_type: ORDER_CREATED_EVENT_TYPE,
         payload: order_created_payload(order),
