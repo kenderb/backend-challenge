@@ -39,7 +39,7 @@ RSpec.describe "Outbox workflow (full-flow integration)", type: :request do
 
   describe "full-flow: API → outbox → worker → published" do
     it "creates order via POST, then worker publishes pending event and marks it processed" do
-      post orders_path, params: valid_body.to_json, headers: request_headers
+      post api_v1_orders_path, params: valid_body.to_json, headers: request_headers
       expect(response).to have_http_status(:created)
 
       order_id = response.parsed_body["id"]
@@ -71,7 +71,7 @@ RSpec.describe "Outbox workflow (full-flow integration)", type: :request do
 
   describe "worker retry: first publish fails, retry (event reset to pending) then succeeds" do
     it "marks event failed on first run, then processed after reset to pending and second run" do
-      post orders_path, params: valid_body.to_json, headers: request_headers
+      post api_v1_orders_path, params: valid_body.to_json, headers: request_headers
       expect(response).to have_http_status(:created)
       expect(OutboxEvent.pending_events.count).to eq(1)
       event = OutboxEvent.pending_events.last
@@ -102,10 +102,10 @@ RSpec.describe "Outbox workflow (full-flow integration)", type: :request do
 
   describe "worker batch: multiple pending events in one run" do
     it "processes all pending events in a single worker run" do
-      post orders_path, params: valid_body.to_json, headers: request_headers
+      post api_v1_orders_path, params: valid_body.to_json, headers: request_headers
       expect(response).to have_http_status(:created)
       body2 = valid_body.merge(product_name: "Workflow Product #{SecureRandom.hex(4)}")
-      post orders_path, params: body2.to_json, headers: request_headers
+      post api_v1_orders_path, params: body2.to_json, headers: request_headers
       expect(response).to have_http_status(:created)
 
       expect(OutboxEvent.pending_events.count).to eq(2)

@@ -20,7 +20,7 @@ module Orders
     def initialize(params:, idempotency_key: nil, customer_client: nil)
       @params = params.to_h.with_indifferent_access
       @idempotency_key = idempotency_key.presence
-      @customer_client = customer_client || ExternalApis::CustomerClient.new
+      @customer_client = customer_client || ::Clients::CustomerServiceClient.new
     end
 
     def call
