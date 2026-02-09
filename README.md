@@ -38,13 +38,14 @@ backend-challenge/
 
 ### Services overview
 
-| Service           | Description                    | Port(s)   |
-|-------------------|--------------------------------|-----------|
-| **order_service** | Orders API (Rails)             | 3001      |
-| **customer_service** | Customers API (Rails)       | 3002      |
-| **order_db**      | PostgreSQL for Order Service  | 5433      |
-| **customer_db**   | PostgreSQL for Customer Service| 5434      |
-| **rabbitmq**      | Message broker + management UI | 5672, 15672 |
+| Service                 | Description                                      | Port(s)   |
+|-------------------------|--------------------------------------------------|-----------|
+| **order_service**       | Orders API (Rails)                               | 3001      |
+| **order_outbox_worker** | Publishes outbox events to RabbitMQ (waits for DB + broker) | —         |
+| **customer_service**    | Customers API (Rails)                            | 3002      |
+| **order_db**            | PostgreSQL for Order Service                     | 5433      |
+| **customer_db**         | PostgreSQL for Customer Service                  | 5434      |
+| **rabbitmq**            | Message broker + management UI                   | 5672, 15672 |
 
 All containers use the internal network `be_test_net`. Database config uses `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` (set in `docker-compose.yml`).
 
@@ -134,6 +135,26 @@ docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec
 
 Using `-e RAILS_ENV=test` also ensures the test database is used. App code is mounted into the containers, so **code changes are picked up immediately**—no rebuild needed. Only rebuild when you change the **Gemfile** or **Dockerfile**: `docker compose build customer_service`.
 
+### Docker-first: run specs and linting inside running containers
+
+With the stack up (`docker compose up -d`), run specs and RuboCop using **exec** (no new container):
+
+```bash
+# One-time: create test DB and run migrations
+docker compose exec order_service bundle exec rails db:create db:migrate RAILS_ENV=test
+docker compose exec customer_service bundle exec rails db:create db:migrate RAILS_ENV=test
+
+# Run Order Service specs
+docker compose exec order_service bundle exec rspec
+
+# Run Customer Service specs
+docker compose exec customer_service bundle exec rspec
+
+# Run RuboCop (Order Service)
+docker compose exec order_service bundle exec rubocop
+```
+
+Use `docker compose exec <service> <cmd>` for any one-off command inside a running container.
 
 ### Locally (no Docker)
 
@@ -165,19 +186,21 @@ bundle exec rspec path/to/spec_file.rb   # single file
 
 ## Transactional Outbox (Order Service)
 
-Order creation uses the **Transactional Outbox Pattern**: the `Order` and an `OutboxEvent` are persisted in a **single database transaction**, so no event is lost if RabbitMQ is down at creation time.
+Order creation uses the **Transactional Outbox Pattern**: `Orders::CreateOrder` wraps business logic and `OutboxEvent` creation in a **single ActiveRecord transaction**, so no event is lost if RabbitMQ is down at creation time.
 
 - **Persistence:** Events are stored in the `outbox_events` table (PostgreSQL).
-- **Relay:** A Rake-driven polling consumer publishes pending events to RabbitMQ (`exchange: orders.v1`, `routing_key: order.created`) and marks them `processed` only after a successful publish.
-- **Run relay once:** `cd order_service && bundle exec rake outbox:relay_once`
-- **Run relay in a loop (e.g. every 5s):** `bundle exec rake "outbox:relay[5]"`
+- **PublishingWorker:** Uses `FOR UPDATE SKIP LOCKED` when claiming pending events so multiple worker containers can run without race conditions. Publishes to RabbitMQ (`exchange: orders.v1`, `routing_key: order.created`) with retry and exponential backoff if the broker is unreachable. Uses `RABBITMQ_HOST` (e.g. `rabbitmq` in Docker).
+- **Run once:** `bundle exec rake outbox:publish_once`
+- **Run in a loop (e.g. every 5s):** `bundle exec rake "outbox:publish[5]"`
+- **Docker:** The `order_outbox_worker` service waits for `order_db` and `rabbitmq` to be healthy, then runs the publishing loop.
 
-The **Customer Service** applies `order.created` events **idempotently** via `Orders::ApplyOrderCreated` (using `event_id` and a `processed_order_events` table) so duplicate deliveries do not double-increment `orders_count`.
+The **Customer Service** applies `order.created` events **idempotently** via `Orders::ApplyOrderCreated` (using `event_id` and a `processed_order_events` table) so duplicate deliveries do not double-increment `orders_count`. Services return a **Result object** (`Result::Success` / `Result::Failure`) for clean API response handling.
 
 ---
 
 ## Summary
 
 - **Run app:** `docker compose up --build -d` from `backend-challenge`.
-- **Run Order Service specs:** `docker compose run --rm -e RAILS_ENV=test order_service bundle exec rspec` or from `order_service/`: `RAILS_ENV=test bundle exec rspec`.
-- **Run Customer Service specs:** `docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec` or from `customer_service/`: `RAILS_ENV=test bundle exec rspec`.
+- **Run Order Service specs:** `docker compose exec order_service bundle exec rspec` (with stack up) or `docker compose run --rm -e RAILS_ENV=test order_service bundle exec rspec`.
+- **Run Customer Service specs:** `docker compose exec customer_service bundle exec rspec` or `docker compose run --rm -e RAILS_ENV=test customer_service bundle exec rspec`.
+- **Lint Order Service:** `docker compose exec order_service bundle exec rubocop`.

@@ -9,6 +9,8 @@ class OutboxEvent < ApplicationRecord
   validates :payload, presence: true
 
   scope :pending_events, -> { where(status: :pending).order(created_at: :asc) }
+  # For use by PublishingWorker: claim rows so other workers skip them (multi-container safe).
+  scope :lockable_pending, -> { pending_events.lock("FOR UPDATE SKIP LOCKED") }
   scope :processed_events, -> { where(status: :processed) }
 
   def mark_processing!

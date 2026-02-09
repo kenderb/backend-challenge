@@ -1,27 +1,54 @@
 # frozen_string_literal: true
 
 module Outbox
-  # Publishes messages to RabbitMQ (exchange: orders.v1, routing_key: order.created).
-  # Used by the outbox relay after successfully reading from the outbox table.
+  # Publishes messages to RabbitMQ (exchange: orders.v1). Uses RABBITMQ_HOST from docker-compose.
+  # Retries with exponential backoff when the broker is unreachable.
   class RabbitmqPublisher
     ORDERS_EXCHANGE = "orders.v1"
     ROUTING_KEY_ORDER_CREATED = "order.created"
 
-    def initialize(connection_params: nil)
+    DEFAULT_MAX_ATTEMPTS = 5
+    DEFAULT_BASE_DELAY_SECONDS = 1
+
+    def initialize(connection_params: nil, max_attempts: DEFAULT_MAX_ATTEMPTS, base_delay: DEFAULT_BASE_DELAY_SECONDS)
       @connection_params = connection_params || default_connection_params
+      @max_attempts = max_attempts
+      @base_delay = base_delay
     end
 
     # Publishes payload to exchange with given routing_key. Returns true on success.
-    # Raises on connection/publish errors so the relay can retry later.
+    # Retries with exponential backoff on connection/publish errors; raises after max_attempts.
     def publish(routing_key:, payload:)
-      connection.start
-      with_channel { |ch| publish_to_exchange(ch, routing_key, payload) }
-      true
-    ensure
-      connection.close
+      with_retries { connect_and_publish(routing_key, payload) }
     end
 
     private
+
+    def with_retries # rubocop:disable Metrics/MethodLength
+      attempt = 0
+      begin
+        attempt += 1
+        yield
+        true
+      rescue StandardError => e
+        raise e if attempt >= @max_attempts
+
+        sleep_backoff(attempt)
+        retry
+      ensure
+        connection&.close
+        @connection = nil
+      end
+    end
+
+    def sleep_backoff(attempt)
+      sleep(@base_delay * (2**(attempt - 1)))
+    end
+
+    def connect_and_publish(routing_key, payload)
+      connection.start
+      with_channel { |ch| publish_to_exchange(ch, routing_key, payload) }
+    end
 
     def publish_to_exchange(channel, routing_key, payload)
       exchange = channel.topic(ORDERS_EXCHANGE, durable: true)
