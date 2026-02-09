@@ -24,20 +24,25 @@ All services use network `be_test_net`. DB config: `POSTGRES_HOST`, `POSTGRES_US
   [Client]
       │ POST /api/v1/orders
       ▼
-  ┌─────────────────────┐     outbox_events      ┌──────────────────────┐
-  │   Order Service      │ ───────────────────▶  │  order_outbox_worker │
-  │   (Rails API)        │   (DB transaction)     │  (rake outbox:publish)│
-  └─────────────────────┘                        └──────────┬───────────┘
-                                                            │ publish
-                                                            ▼
-  ┌─────────────────────┐     order.created       ┌──────────────────────┐
-  │  Customer Service   │ ◀────────────────────  │      RabbitMQ         │
-  │  (Rails API)        │   (AMQP)                │  exchange: orders.v1  │
-  │                     │                         └──────────────────────┘
-  │  order_created_consumer ◀── consume (run: rake consumer:order_created)
-  │  → ApplyOrderCreated → customers.orders_count
+  ┌─────────────────────┐    HTTP GET /customers/:id     ┌─────────────────────┐
+  │   Order Service      │ ───────────────────────────▶ │   Customer Service   │
+  │   (Rails API)        │   (fetch customer_name,       │   (Rails API)         │
+  │                      │    address before saving)     │   GET /customers/:id  │
+  └──────────┬──────────┘                               └──────────────────────┘
+             │ outbox_events (DB transaction)
+             ▼
+  ┌──────────────────────┐
+  │  order_outbox_worker  │  publish
+  │  (rake outbox:publish)│ ──────────────────────────▶  RabbitMQ (order.created)
+  └──────────────────────┘                                        │
+                                                                   │ AMQP
+  ┌─────────────────────┐                                         ▼
+  │  Customer Service   │  order_created_consumer (rake consumer:order_created)
+  │  → ApplyOrderCreated │  → customers.orders_count
   └─────────────────────┘
 ```
+
+**Order → Customer HTTP call:** Before persisting an order, Order Service calls Customer Service via **HTTP GET** (e.g. `GET /customers/:customer_id`) to fetch `customer_name` and `address`. That data is used for validation and can be stored or used in the order flow; the actual order row is written in the same transaction as the outbox event.
 
 ---
 
@@ -58,6 +63,25 @@ docker compose ps -a   # wait until healthy (~30–60 s for Rails)
 | Order Service    | http://localhost:3001      |
 | Customer Service | http://localhost:3002      |
 | RabbitMQ UI      | http://localhost:15672 (guest / guest) |
+
+### API routes (endpoint documentation)
+
+**Order Service** (base: `http://localhost:3001`)
+
+| Method | Route | Description |
+|--------|--------|-------------|
+| GET | `/api/v1/orders` | List all orders (newest first). |
+| GET | `/api/v1/orders?customer_id=123` | **Consultar pedidos** — list orders for a given customer. |
+| GET | `/api/v1/orders/:id` | Show a single order. |
+| POST | `/api/v1/orders` | Create order. Body: `customer_id`, `product_name`, `quantity`, optional `price`, `status`. Optional header: `Idempotency-Key` for idempotent creation. |
+
+Before creating an order, Order Service calls Customer Service via **HTTP GET** to resolve the customer (e.g. `GET {CUSTOMER_SERVICE_URL}/customers/:customer_id`) and fetches `customer_name` and `address`; the order is only saved after a successful response (or a well-defined error is returned).
+
+**Customer Service** (base: `http://localhost:3002`)
+
+| Method | Route | Description |
+|--------|--------|-------------|
+| GET | `/customers/:id` | Get customer by id (name, address, orders_count). Requires `X-Internal-Api-Key` when called by Order Service. |
 
 **Stop:** `docker compose down`
 
@@ -144,7 +168,7 @@ We use it to avoid the **dual-write problem**. Writing the order to the DB and t
 
 **How it works**
 
-- **`Orders::CreateOrder`** creates the order and an `OutboxEvent` in a single `ActiveRecord` transaction.
+- **`Orders::CreateOrder`** first calls **Customer Service via HTTP** (GET `/customers/:id`) to fetch `customer_name` and `address`; if the customer is missing or the service is unavailable, it returns an error without writing the order. On success, it creates the order and an `OutboxEvent` in a single `ActiveRecord` transaction.
 - Events live in the **`outbox_events`** table. **`Outbox::PublishingWorker`** claims rows with `FOR UPDATE SKIP LOCKED` (safe for multiple worker containers), publishes to RabbitMQ (`exchange: orders.v1`, `routing_key: order.created`) with exponential backoff, and marks them processed only after a successful publish.
 - **Docker:** `order_outbox_worker` waits for `order_db` and `rabbitmq` to be healthy, then runs the publish loop (e.g. every 5s).
 - **Rake:** `bundle exec rake outbox:publish_once` or `bundle exec rake "outbox:publish[5]"`.
