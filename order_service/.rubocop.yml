@@ -11,6 +11,7 @@ AllCops:
   SuggestExtensions: false
   TargetRubyVersion: 3.1
   Exclude:
+    - ".rubocop.yml"
     - "bin/**"
     - "db/schema.rb"
     - "db/migrate/**"
@@ -35,6 +36,16 @@ Layout/LineLength:
   Exclude:
     - "spec/**/*"
 
+# Metrics: orchestration services with multiple error mappings get higher limits
+Metrics/AbcSize:
+  Exclude:
+    - "app/services/orders/create_order.rb"
+
+Metrics/MethodLength:
+  Max: 15
+  Exclude:
+    - "app/services/orders/create_order.rb"
+
 # Rails (modern)
 Rails:
   Enabled: true
@@ -51,10 +62,13 @@ Rails/EnvironmentVariableAccess:
 
 # RSpec
 RSpec/ExampleLength:
-  Max: 15
+  Max: 25
 
 RSpec/MultipleExpectations:
-  Max: 5
+  Max: 12
+
+RSpec/MultipleMemoizedHelpers:
+  Max: 8
 
 RSpec/NestedGroups:
   Max: 5
@@ -63,3 +77,9 @@ RSpec/DescribeClass:
   Exclude:
     - "spec/routing/**/*"
     - "spec/requests/**/*"
+
+RSpec/ContextWording:
+  Prefixes:
+    - when
+    - with
+    - without

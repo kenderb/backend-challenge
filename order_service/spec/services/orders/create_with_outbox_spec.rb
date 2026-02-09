@@ -36,13 +36,13 @@ RSpec.describe Orders::CreateWithOutbox do
       expect do
         result = described_class.call(valid_params)
         expect(result.success?).to be true
-        expect(result.value).to be_persisted
+        expect(result.value.order).to be_persisted
       end.to change(Order, :count).by(1).and change(OutboxEvent, :count).by(1)
     end
 
     it "stores outbox event with correct attributes for the created order" do
       result = described_class.call(valid_params)
-      order = result.value
+      order = result.value.order
       event = OutboxEvent.last
 
       expect(event.status).to eq("pending")

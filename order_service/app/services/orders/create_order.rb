@@ -7,6 +7,7 @@ module Orders
   class CreateOrder
     ORDER_AGGREGATE_TYPE = "Order"
     ORDER_CREATED_EVENT_TYPE = "order.created"
+    ResultValue = Struct.new(:order, :created, keyword_init: true)
 
     def self.call(params, idempotency_key: nil, customer_client: nil)
       new(
@@ -23,10 +24,13 @@ module Orders
     end
 
     def call
-      return Result::Success.new(value: existing_order) if idempotency_key && existing_order
+      return success_result(existing_order, created: false) if idempotency_key && existing_order
 
       validate_customer!
-      Result::Success.new(value: create_order_and_outbox_event)
+      order = create_order_and_outbox_event
+      success_result(order, created: true)
+    rescue ActiveRecord::RecordNotUnique
+      success_result(IdempotencyKey.find_by!(key: idempotency_key).order, created: false)
     rescue Errors::CustomerNotFound => e
       Result::Failure.new(error_code: :customer_not_found, message: e.message)
     rescue Errors::UnauthorizedError => e
@@ -41,6 +45,10 @@ module Orders
 
     def existing_order
       @existing_order ||= IdempotencyKey.find_by(key: idempotency_key)&.order
+    end
+
+    def success_result(order, created:)
+      Result::Success.new(value: ResultValue.new(order: order, created: created))
     end
 
     def create_order_and_outbox_event

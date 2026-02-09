@@ -37,13 +37,13 @@ RSpec.describe Orders::CreateOrder do
         result = described_class.call(valid_params)
         expect(result).to be_a(Result::Success)
         expect(result.success?).to be true
-        expect(result.value).to be_persisted
+        expect(result.value.order).to be_persisted
       end.to change(Order, :count).by(1).and change(OutboxEvent, :count).by(1)
     end
 
     it "stores outbox event with correct attributes for the created order" do
       result = described_class.call(valid_params)
-      order = result.value
+      order = result.value.order
       event = OutboxEvent.last
 
       expect(event.status).to eq("pending")
@@ -69,7 +69,8 @@ RSpec.describe Orders::CreateOrder do
     it "returns Result::Success with value when successful" do
       result = described_class.call(valid_params)
       expect(result).to be_a(Result::Success)
-      expect(result.value).to be_a(Order)
+      expect(result.value.order).to be_a(Order)
+      expect(result.value.created).to be true
     end
 
     it "returns Result::Failure with error_code when customer not found" do
@@ -96,6 +97,7 @@ RSpec.describe Orders::CreateOrder do
       described_class.call(valid_params, idempotency_key: idempotency_key)
       result = described_class.call(valid_params, idempotency_key: idempotency_key)
       expect(result.success?).to be true
+      expect(result.value.created).to be false
       expect(Order.count).to eq(1)
       expect(OutboxEvent.count).to eq(1)
     end
