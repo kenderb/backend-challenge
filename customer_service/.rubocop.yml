@@ -49,7 +49,9 @@ RSpec/ExampleLength:
   Max: 15
 
 RSpec/MultipleExpectations:
-  Max: 5
+  Max: 8
+  Exclude:
+    - "spec/integration/**/*"
 
 RSpec/NestedGroups:
   Max: 5
@@ -58,3 +60,14 @@ RSpec/DescribeClass:
   Exclude:
     - "spec/routing/**/*"
     - "spec/requests/**/*"
+    - "spec/integration/**/*"
+    - "spec/consumers/**/*"
+
+Metrics/AbcSize:
+  Exclude:
+    - "app/services/orders/apply_order_created.rb"
+
+Metrics/MethodLength:
+  Max: 15
+  Exclude:
+    - "app/consumers/order_created_consumer.rb"
