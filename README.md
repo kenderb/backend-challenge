@@ -18,28 +18,56 @@ Microservices project: **Order Service** and **Customer Service** (Rails), Postg
 
 All services use network `be_test_net`. DB config: `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (see `docker-compose.yml`).
 
-### Architecture diagram
+### Architecture Diagram
 
-```
-  [Client]
-      │ POST /api/v1/orders
-      ▼
-  ┌─────────────────────┐    HTTP GET /customers/:id     ┌─────────────────────┐
-  │   Order Service      │ ───────────────────────────▶ │   Customer Service   │
-  │   (Rails API)        │   (fetch customer_name,       │   (Rails API)         │
-  │                      │    address before saving)     │   GET /customers/:id  │
-  └──────────┬──────────┘                               └──────────────────────┘
-             │ outbox_events (DB transaction)
-             ▼
-  ┌──────────────────────┐
-  │  order_outbox_worker  │  publish
-  │  (rake outbox:publish)│ ──────────────────────────▶  RabbitMQ (order.created)
-  └──────────────────────┘                                        │
-                                                                   │ AMQP
-  ┌─────────────────────┐                                         ▼
-  │  Customer Service   │  order_created_consumer (rake consumer:order_created)
-  │  → ApplyOrderCreated │  → customers.orders_count
-  └─────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Client
+    box "Order Service"
+    participant OS as Rails API
+    participant DB1 as Order DB (Postgres)
+    participant Worker as Outbox Worker
+    end
+    participant RMQ as RabbitMQ
+    box "Customer Service"
+    participant CS as Rails API
+    participant DB2 as Customer DB (Postgres)
+    participant Consumer as Event Consumer
+    end
+
+    Note over Client, CS: 1. Synchronous Request/Response
+    Client->>OS: POST /api/v1/orders
+    OS->>CS: GET /customers/:id (HTTP Faraday)
+    CS->>DB2: Fetch Name & Address
+    DB2-->>CS: Customer Data
+    CS-->>OS: 200 OK (Name, Address)
+
+    Note over OS, DB1: 2. Atomic Transaction
+    rect rgb(240, 240, 240)
+        OS->>DB1: BEGIN TRANSACTION
+        OS->>DB1: Save Order Record
+        OS->>DB1: Insert Outbox Event (order.created)
+        OS->>DB1: COMMIT
+    end
+    OS-->>Client: 201 Created
+
+    Note over Worker, RMQ: 3. Asynchronous Reliable Delivery
+    loop Every 5s
+        Worker->>DB1: Fetch Unprocessed Events
+        Worker->>RMQ: Publish "order.created"
+        RMQ-->>Worker: Ack
+        Worker->>DB1: Mark Event as Processed
+    end
+
+    Note over RMQ, DB2: 4. Event Consumption & Idempotency
+    RMQ->>Consumer: Deliver "order.created"
+    rect rgb(240, 240, 240)
+        Consumer->>DB2: BEGIN TRANSACTION
+        Consumer->>DB2: Insert event_id into processed_events (Check Unique)
+        Consumer->>DB2: UPDATE customers SET orders_count += 1
+        Consumer->>DB2: COMMIT
+    end
+    Consumer-->>RMQ: Ack
 ```
 
 **Order → Customer HTTP call:** Before persisting an order, Order Service calls Customer Service via **HTTP GET** (e.g. `GET /customers/:customer_id`) to fetch `customer_name` and `address`. That data is used for validation and can be stored or used in the order flow; the actual order row is written in the same transaction as the outbox event.
