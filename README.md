@@ -37,19 +37,23 @@ sequenceDiagram
 
     Note over Client, CS: 1. Synchronous Request/Response
     Client->>OS: POST /api/v1/orders
-    OS->>CS: GET /customers/:id (HTTP Faraday)
-    CS->>DB2: Fetch Name & Address
-    DB2-->>CS: Customer Data
-    CS-->>OS: 200 OK (Name, Address)
-
-    Note over OS, DB1: 2. Atomic Transaction
-    rect rgb(240, 240, 240)
-        OS->>DB1: BEGIN TRANSACTION
-        OS->>DB1: Save Order Record
-        OS->>DB1: Insert Outbox Event (order.created)
-        OS->>DB1: COMMIT
+    OS->>CS: GET /customers/:id
+    
+    alt Customer Found
+        CS-->>OS: 200 OK (Name, Address)
+        Note over OS, DB1: 2. Atomic Transaction
+        rect rgb(240, 240, 240)
+            OS->>DB1: BEGIN TRANSACTION
+            OS->>DB1: Save Order Record
+            OS->>DB1: Insert Outbox Event
+            OS->>DB1: COMMIT
+        end
+        OS-->>Client: 201 Created
+    else Customer Not Found / Service Down
+        CS-->>OS: 404 Not Found / 503 Error
+        OS-->>Client: 422 Unprocessable Entity (Error Message)
+        Note right of OS: Transaction Aborted: No data written to Order DB
     end
-    OS-->>Client: 201 Created
 
     Note over Worker, RMQ: 3. Asynchronous Reliable Delivery
     loop Every 5s
@@ -63,7 +67,7 @@ sequenceDiagram
     RMQ->>Consumer: Deliver "order.created"
     rect rgb(240, 240, 240)
         Consumer->>DB2: BEGIN TRANSACTION
-        Consumer->>DB2: Insert event_id into processed_events (Check Unique)
+        Consumer->>DB2: Insert event_id (Check Unique)
         Consumer->>DB2: UPDATE customers SET orders_count += 1
         Consumer->>DB2: COMMIT
     end
