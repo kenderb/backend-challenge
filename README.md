@@ -11,11 +11,33 @@ Microservices project: **Order Service** and **Customer Service** (Rails), Postg
 | **order_service**       | Orders API                             | 3001      |
 | **order_outbox_worker** | Publishes outbox events to RabbitMQ   | —         |
 | **customer_service**    | Customers API                         | 3002      |
+| **order_created_consumer** | RabbitMQ consumer (order.created) — *start separately* | —   |
 | **order_db**            | PostgreSQL (Order Service)            | 5433      |
 | **customer_db**         | PostgreSQL (Customer Service)        | 5434      |
 | **rabbitmq**            | Message broker + management UI        | 5672, 15672 |
 
 All services use network `be_test_net`. DB config: `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (see `docker-compose.yml`).
+
+### Architecture diagram
+
+```
+  [Client]
+      │ POST /api/v1/orders
+      ▼
+  ┌─────────────────────┐     outbox_events      ┌──────────────────────┐
+  │   Order Service      │ ───────────────────▶  │  order_outbox_worker │
+  │   (Rails API)        │   (DB transaction)     │  (rake outbox:publish)│
+  └─────────────────────┘                        └──────────┬───────────┘
+                                                            │ publish
+                                                            ▼
+  ┌─────────────────────┐     order.created       ┌──────────────────────┐
+  │  Customer Service   │ ◀────────────────────  │      RabbitMQ         │
+  │  (Rails API)        │   (AMQP)                │  exchange: orders.v1  │
+  │                     │                         └──────────────────────┘
+  │  order_created_consumer ◀── consume (run: rake consumer:order_created)
+  │  → ApplyOrderCreated → customers.orders_count
+  └─────────────────────┘
+```
 
 ---
 
@@ -39,6 +61,29 @@ docker compose ps -a   # wait until healthy (~30–60 s for Rails)
 
 **Stop:** `docker compose down`
 
+### Starting the RabbitMQ consumer (Customer Service)
+
+For end-to-end flow (orders → outbox → RabbitMQ → customer `orders_count`), the **order.created consumer** must be running. It is not started by `docker compose up`; start it in a separate process.
+
+**Docker (stack already running):**
+
+```bash
+docker compose exec customer_service bundle exec rake consumer:order_created
+```
+
+This runs the consumer in the foreground (blocking). It subscribes to the `order.created` queue, applies each message via `Orders::ApplyOrderCreated`, and acks only after a successful DB commit (at-least-once with idempotency).
+
+**Local (no Docker):**
+
+From the `customer_service` directory, with DB and RabbitMQ available:
+
+```bash
+cd customer_service
+bundle exec rake consumer:order_created
+```
+
+For production you would typically run this as a long-lived process (e.g. systemd unit or separate container) and scale with multiple consumer instances.
+
 ---
 
 ## Tests and Linting
@@ -57,13 +102,15 @@ docker compose exec customer_service bundle exec rails db:create db:migrate RAIL
 Then run tests or lint (use **`-e RAILS_ENV=test`** with exec so the test environment loads; otherwise the container defaults to development and request specs can get 403):
 
 ```bash
-# Tests
+# Tests (full suite; includes integration and request specs)
 docker compose exec -e RAILS_ENV=test order_service bundle exec rspec
 docker compose exec -e RAILS_ENV=test customer_service bundle exec rspec
 
 # Lint (Order Service)
 docker compose exec order_service bundle exec rubocop
 ```
+
+**Customer Service:** `bundle exec rspec` runs the full suite, including the integration test **`spec/integration/order_created_at_least_once_spec.rb`** (at-least-once idempotency: applying the same `event_id` twice increments `orders_count` only once). No extra flags needed.
 
 ### Docker (one-off, no stack)
 
@@ -121,6 +168,7 @@ So **`orders_count` is incremented at most once per event**, even with duplicate
 | Task              | Command |
 |-------------------|---------|
 | Start stack      | `docker compose up --build -d` |
+| Start RabbitMQ consumer (Customer Service) | `docker compose exec customer_service bundle exec rake consumer:order_created` |
 | Order Service tests | `docker compose exec -e RAILS_ENV=test order_service bundle exec rspec` |
-| Customer Service tests | `docker compose exec -e RAILS_ENV=test customer_service bundle exec rspec` |
+| Customer Service tests | `docker compose exec -e RAILS_ENV=test customer_service bundle exec rspec` (includes integration test) |
 | Lint Order Service | `docker compose exec order_service bundle exec rubocop` |
