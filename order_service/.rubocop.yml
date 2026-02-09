@@ -1,4 +1,5 @@
-# RuboCop configuration for Order Service
+# RuboCop configuration for Order Service (modern Rails standards)
+# Run via: docker compose exec order_service bundle exec rubocop
 # https://docs.rubocop.org/rubocop/configuration
 
 plugins:
@@ -34,7 +35,7 @@ Layout/LineLength:
   Exclude:
     - "spec/**/*"
 
-# Rails
+# Rails (modern)
 Rails:
   Enabled: true
 
@@ -44,6 +45,9 @@ Rails/ApplicationRecord:
 Rails/Output:
   Exclude:
     - "db/seeds.rb"
+
+Rails/EnvironmentVariableAccess:
+  Enabled: false
 
 # RSpec
 RSpec/ExampleLength:
