@@ -38,7 +38,7 @@ RSpec.describe Orders::Create do
         expect do
           result = described_class.call(valid_params)
           expect(result.success?).to be true
-          expect(result.value).to be_persisted
+          expect(result.value.order).to be_persisted
         end.to change(Order, :count).by(1)
       end
 
@@ -46,13 +46,13 @@ RSpec.describe Orders::Create do
         result = described_class.call(valid_params)
 
         expect(result.success?).to be true
-        expect(result.value).to be_a(Order)
-        expect(result.value).to be_persisted
+        expect(result.value.order).to be_a(Order)
+        expect(result.value.order).to be_persisted
       end
 
       it "returns the order with the given attributes and pending status" do
         result = described_class.call(valid_params)
-        order = result.value
+        order = result.value.order
 
         expect(order.customer_id).to eq(valid_params[:customer_id])
         expect(order.product_name).to eq(valid_params[:product_name])
@@ -125,7 +125,7 @@ RSpec.describe Orders::Create do
 
       it "creates an order on first request and stores the key" do
         result = described_class.call(valid_params, idempotency_key: idempotency_key)
-        order = result.value
+        order = result.value.order
 
         expect(result.success?).to be true
         expect(order).to be_persisted
@@ -135,8 +135,8 @@ RSpec.describe Orders::Create do
       it "returns the existing order on duplicate key and does not increment count" do
         result_first = described_class.call(valid_params, idempotency_key: idempotency_key)
         result_second = described_class.call(valid_params, idempotency_key: idempotency_key)
-        order_first = result_first.value
-        order_second = result_second.value
+        order_first = result_first.value.order
+        order_second = result_second.value.order
 
         expect(order_second.id).to eq(order_first.id)
         expect(order_second).to eq(order_first)

@@ -24,7 +24,7 @@ module Outbox
 
     private
 
-    def with_retries # rubocop:disable Metrics/MethodLength
+    def with_retries
       attempt = 0
       begin
         attempt += 1
